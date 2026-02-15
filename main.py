@@ -32,9 +32,9 @@ try:
     expected_features = pipeline_state["expected_features"]
     columns_to_drop = pipeline_state["dropped_columns"]
     label_encoder = pipeline_state["label_encoder"]
-    print("✅ Model and Pipeline State Loaded Successfully.")
+    print(" Model and Pipeline State Loaded Successfully.")
 except Exception as e:
-    print(f"❌ CRITICAL ERROR: Could not load model or pipeline state. {e}")
+    print(f"  CRITICAL ERROR: Could not load model or pipeline state. {e}")
     exit(1)
 
 # Global async queue
@@ -172,7 +172,7 @@ async def inference_worker():
                             # Fallback to current time if dataset time fails
                             iso_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
                         
-                        output_str = f"⚠️ THREAT DETECTED: {pred_name} (Confidence: {confidence:.2f})"
+                        output_str = f" THREAT DETECTED: {pred_name} (Confidence: {confidence:.2f})"
 
                         payload = {
                             "input_that_i_gave_to_the_model": record,
@@ -198,7 +198,7 @@ async def inference_worker():
                             await downstream_socket.send(json.dumps(payload))
                 
                 if batch_threat_count > 0:
-                    print(f"⚠️ Batch Processed: {batch_threat_count} Threats Sent | Normal Count is at {session_normal_count}")
+                    print(f" Batch Processed: {batch_threat_count} Threats Sent | Normal Count is at {session_normal_count}")
 
             except Exception as e:
                 print(f"Pipeline error: {e}")
