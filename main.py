@@ -15,7 +15,7 @@ TIMEOUT_SECONDS = 0.5
 PORT = 8765
 
 # [!] XAI Server Address (Threats go here)
-DOWNSTREAM_URI = "ws://13.233.93.2:8000/ws/signal" 
+DOWNSTREAM_URI = "ws://localhost:8000/ws/signal" 
 
 # [!] Normal Traffic Monitor Address (Safe traffic stats go here)
 NORMAL_TRAFFIC_URI = "ws://localhost:9000" 
