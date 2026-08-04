@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+sdist/
+wheels/
+*.whl
+
+# Virtual environments
+.venv/
+.venv
+venv/
+env/
+ENV/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Datasets. UNSW-NB15 lives in the project root data directory, outside this
+# repository. These patterns stop a stray copy being committed.
+archive/
+data/
+*.csv
+
+# Trained artefacts. Checkpoints, fitted pipelines and tuner state are written
+# to the project root artifacts directory. Keeping the patterns here means a run
+# that defaults to the working directory cannot accidentally commit a model.
+artifacts/
+*.h5
+*.keras
+*.pkl
+*.joblib
+*.npy
+*.pb
+saved_model/
+threat_detection_project/
+tuner/
+
+# Experiment output
+results/
+figures/
+*.log
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
