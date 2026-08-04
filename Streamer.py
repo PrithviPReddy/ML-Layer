@@ -1,75 +1,115 @@
+import argparse
 import asyncio
-import websockets
-import pandas as pd
 import json
+from pathlib import Path
 
-# --- CONFIGURATION ---
-CSV_FILES = [
-    "archive/UNSW-NB15_1.csv", 
-    "archive/UNSW-NB15_2.csv", 
-    "archive/UNSW-NB15_3.csv", 
-    "archive/UNSW-NB15_4.csv"
-]
+import pandas as pd
+import websockets
 
-# For local testing. Change "localhost" to your EC2 Public IP later!
-WS_URI = "ws://localhost:8765" 
+OFFICIAL_TEST_PARTITION = "UNSW_NB15_training-set.csv"
+OFFICIAL_TRAIN_PARTITION = "UNSW_NB15_testing-set.csv"
 
-BURST_SIZE = 2     # Number of logs to send in a single rapid burst
-BURST_DELAY = 0.5    # Pause in seconds between bursts
+DEFAULT_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DEFAULT_WS_URI = "ws://localhost:8765"
+DEFAULT_BURST_SIZE = 2
+DEFAULT_BURST_DELAY = 0.5
 
-async def stream_data(websocket):
-    """Reads CSVs in chunks and streams them infinitely."""
-    # 1. Load the headers first so every JSON packet has the right keys
-    features_df = pd.read_csv('archive/NUSW-NB15_features.csv', encoding='cp1252')
-    column_names = features_df['Name'].tolist()
-    
+
+async def stream_data(websocket, data_dir, partition_file, burst_size, burst_delay, verbose):
+    """Replay one CSV partition to the sensor layer, looping indefinitely.
+
+    Args:
+        websocket: Open connection to the sensor layer.
+        data_dir: Directory holding the UNSW-NB15 files.
+        partition_file: Filename of the partition to replay.
+        burst_size: Records sent per burst.
+        burst_delay: Seconds paused between bursts.
+        verbose: Print each burst's contents.
+    """
+    path = data_dir / partition_file
     loop_count = 1
     while True:
-        print(f"\n--- Starting Dataset Loop #{loop_count} ---")
-        for file in CSV_FILES:
-            print(f"Streaming from {file}...")
-            try:
-                # 2. ADD header=None and names=column_names HERE
-                for chunk in pd.read_csv(file, 
-                                        chunksize=BURST_SIZE, 
-                                        header=None, 
-                                        names=column_names):
-                    
-                    records = chunk.to_dict(orient='records')
-                    for record in records:
-                        cleaned_record = {k: (v if pd.notna(v) else "") for k, v in record.items()}
-                        await websocket.send(json.dumps(cleaned_record))
-                    
-                    # Optional: Print a unique value (like 'dur' or 'sbytes') to verify data is changing
-                    print(f"Sent burst of {len(records)} logs.")
+        print(f"Starting dataset loop {loop_count} from {path}")
+        try:
+            for chunk in pd.read_csv(path, chunksize=burst_size, low_memory=False):
+                records = chunk.to_dict(orient="records")
+                for record in records:
+                    cleaned_record = {
+                        key: (value if pd.notna(value) else "") for key, value in record.items()
+                    }
+                    await websocket.send(json.dumps(cleaned_record))
+
+                if verbose:
+                    print(f"Sent burst of {len(records)} logs")
                     print(records)
 
-                    await asyncio.sleep(BURST_DELAY)
-                    
-            except FileNotFoundError:
-                print(f"ERROR: Could not find {file}. Skipping.")
-                await asyncio.sleep(2)
+                await asyncio.sleep(burst_delay)
+
+        except FileNotFoundError:
+            print(f"Could not find {path}")
+            await asyncio.sleep(2)
         loop_count += 1
 
-async def main():
-    """Manages the connection and automatically reconnects on failure."""
+
+async def run(args):
     while True:
         try:
-            print(f"Attempting to connect to ML server at {WS_URI}...")
-            
-            # Establish the WebSocket connection
-            async with websockets.connect(WS_URI) as websocket:
-                print("Connected! Starting data stream...")
-                await stream_data(websocket)
-                
-        except (websockets.exceptions.ConnectionClosedError, ConnectionRefusedError) as e:
-            print(f"Connection lost or refused: {e}")
-            print("Retrying in 3 seconds...\n")
+            print(f"Connecting to sensor layer at {args.uri}")
+            async with websockets.connect(args.uri) as websocket:
+                print("Connected, starting data stream")
+                await stream_data(
+                    websocket,
+                    args.data_dir,
+                    args.partition_file,
+                    args.burst_size,
+                    args.burst_delay,
+                    args.verbose,
+                )
+
+        except (websockets.exceptions.ConnectionClosedError, ConnectionRefusedError) as exc:
+            print(f"Connection lost or refused: {exc}")
+            print("Retrying in 3 seconds")
             await asyncio.sleep(3)
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+        except Exception as exc:
+            print(f"Unexpected error: {exc}")
             await asyncio.sleep(3)
 
+
+def main():
+    """Parse arguments and run the replayer until interrupted."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Replay the official UNSW-NB15 test partition to the sensor layer. "
+            "The official filenames are inverted in the distributed dataset: the "
+            "file named training-set holds 82332 rows and is the test partition, "
+            "and the file named testing-set holds 175341 rows and is the train "
+            "partition. See paper/EVIDENCE.md appendix L1.3."
+        )
+    )
+    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    parser.add_argument(
+        "--partition-file",
+        type=str,
+        default=OFFICIAL_TEST_PARTITION,
+        help=(
+            f"Partition to replay. Defaults to {OFFICIAL_TEST_PARTITION}, which "
+            f"is the 82332 row test partition. The train partition is "
+            f"{OFFICIAL_TRAIN_PARTITION}."
+        ),
+    )
+    parser.add_argument("--uri", type=str, default=DEFAULT_WS_URI)
+    parser.add_argument("--burst-size", type=int, default=DEFAULT_BURST_SIZE)
+    parser.add_argument("--burst-delay", type=float, default=DEFAULT_BURST_DELAY)
+    parser.add_argument("--verbose", action="store_true")
+    args = parser.parse_args()
+
+    if not args.data_dir.exists():
+        raise SystemExit(f"data directory not found: {args.data_dir}")
+    if not (args.data_dir / args.partition_file).exists():
+        raise SystemExit(f"partition not found: {args.data_dir / args.partition_file}")
+
+    asyncio.run(run(args))
+
+
 if __name__ == "__main__":
-    # Start the async event loop
-    asyncio.run(main())
+    main()
